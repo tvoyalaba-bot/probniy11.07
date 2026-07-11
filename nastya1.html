@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Пруд с рыбками, лягушками, утками и удочкой</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            overflow: hidden;
+            background: #0a2a2a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+
+        #info {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(180, 230, 255, 0.8);
+            background: rgba(0, 20, 30, 0.6);
+            padding: 12px 28px;
+            border-radius: 40px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(100, 200, 255, 0.25);
+            font-size: 18px;
+            letter-spacing: 0.5px;
+            pointer-events: none;
+            white-space: nowrap;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+            user-select: none;
+            font-weight: 300;
+            transition: opacity 0.6s;
+        }
+        #info span {
+            display: inline-block;
+            animation: pulse 2.4s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%,
+            100% {
+                opacity: 0.7;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(1.02);
+            }
+        }
+
+        #counter {
+            position: absolute;
+            top: 24px;
+            right: 28px;
+            color: rgba(180, 230, 255, 0.7);
+            font-size: 16px;
+            background: rgba(0, 20, 30, 0.5);
+            padding: 8px 18px;
+            border-radius: 30px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(100, 200, 255, 0.15);
+            pointer-events: none;
+            user-select: none;
+            font-weight: 300;
+        }
+        #counter strong {
+            color: #8ed4ff;
+            font-weight: 600;
+        }
+
+        @media (max-width: 600px) {
+            #info {
+                font-size: 14px;
+                padding: 10px 18px;
+                bottom: 18px;
+                white-space: normal;
+                max-width: 90%;
+            }
+            #counter {
+                font-size: 13px;
+                padding: 6px 14px;
+                top: 16px;
+                right: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="info"><span>🎣 Кликни по воде, чтобы закинуть удочку и поймать рыбку!</span></div>
+    <div id="counter">🐠 <strong id="fishCount">0</strong> &nbsp;|&nbsp; 🦆 <strong id="duckCount">0</strong></div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        // ----- Импорты -----
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ----- Константы -----
+        const POND_RADIUS = 10;
+        const FISH_COUNT = 18;
+        const COLORS = [
+            0xff6b35, 0xf7c948, 0x4ecdc4, 0xff6b8a, 0x7bed9f,
+            0xffa502, 0x2ed573, 0x1e90ff, 0xff4757, 0x3742fa,
+            0xff6348, 0x2bcbba, 0xf9ca24, 0x686de0, 0xeb4d4b,
+            0x6ab04c, 0xf0932b, 0x22a6b3, 0xbe2edd, 0x7ed6df
+        ];
+
+        // ----- Сцена, камера, рендерер -----
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a2a2a);
+        scene.fog = new THREE.Fog(0x0a2a2a, 30, 50);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(16, 12, 18);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        document.body.prepend(renderer.domElement);
+
+        // ----- Контролы -----
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 0.5, 0);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 4;
+        controls.maxDistance = 40;
+        controls.maxPolarAngle = Math.PI / 2.1;
+        controls.minPolarAngle = 0.1;
+        controls.update();
+
+        // ----- Освещение -----
+        const ambientLight = new THREE.AmbientLight(0x404060, 0.5);
+        scene.add(ambientLight);
+
+        const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x3a1f0a, 0.8);
+        scene.add(hemiLight);
+
+        const sunLight = new THREE.DirectionalLight(0xffeedd, 1.8);
+        sunLight.position.set(15, 20, 10);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 1024;
+        sunLight.shadow.mapSize.height = 1024;
+        sunLight.shadow.camera.near = 0.5;
+        sunLight.shadow.camera.far = 50;
+        sunLight.shadow.camera.left = -20;
+        sunLight.shadow.camera.right = 20;
+        sunLight.shadow.camera.top = 20;
+        sunLight.shadow.camera.bottom = -20;
+        scene.add(sunLight);
+
+        const fillLight = new THREE.DirectionalLight(0x4488ff, 0.4);
+        fillLight.position.set(-10, 5, -15);
+        scene.add(fillLight);
+
+        // ----- Вода (анимированная) -----
+        const waterSegments = 70;
+        const waterGeom = new THREE.PlaneGeometry(POND_RADIUS * 2, POND_RADIUS * 2, waterSegments, waterSegments);
+        waterGeom.rotateX(-Math.PI / 2);
+        const waterMat = new THREE.MeshPhysicalMaterial({
+            color: 0x1a7a8a,
+            transparent: true,
+            opacity: 0.78,
+            roughness: 0.15,
+            metalness: 0.05,
+            envMapIntensity: 0.6,
+            clearcoat: 0.08,
+            clearcoatRoughness: 0.3,
+            side: THREE.DoubleSide,
+        });
+        const water = new THREE.Mesh(waterGeom, waterMat);
+        water.receiveShadow = true;
+        water.position.y = 0;
+        scene.add(water);
+
+        const waterPos = waterGeom.attributes.position;
+        const waterBaseY = new Float32Array(waterPos.array.length);
+        for (let i = 0; i < waterPos.array.length; i += 3) {
+            waterBaseY[i + 1] = waterPos.array[i + 1];
+        }
+
+        // ----- Берег (квадрат с отверстием) -----
+        const shoreSize = POND_RADIUS + 2.5;
+        const shoreShape = new THREE.Shape();
+        shoreShape.moveTo(-shoreSize, -shoreSize);
+        shoreShape.lineTo(shoreSize, -shoreSize);
+        shoreShape.lineTo(shoreSize, shoreSize);
+        shoreShape.lineTo(-shoreSize, shoreSize);
+        shoreShape.lineTo(-shoreSize, -shoreSize);
+
+        const hole = new THREE.Path();
+        const r = POND_RADIUS + 0.15;
+        hole.moveTo(-r, -r);
+        hole.lineTo(r, -r);
+        hole.lineTo(r, r);
+        hole.lineTo(-r, r);
+        hole.lineTo(-r, -r);
+        shoreShape.holes.push(hole);
+
+        const shoreGeom = new THREE.ShapeGeometry(shoreShape);
+        shoreGeom.rotateX(-Math.PI / 2);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#2d5a1e';
+        ctx.fillRect(0, 0, 256, 256);
+        for (let i = 0; i < 8000; i++) {
+            const x = Math.random() * 256;
+            const y = Math.random() * 256;
+            const g = 80 + Math.random() * 100;
+            ctx.fillStyle = `rgb(40, ${g}, 30)`;
+            ctx.fillRect(x, y, 2, 2);
+        }
+        for (let i = 0; i < 1200; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = POND_RADIUS + 0.3 + Math.random() * 1.8;
+            const x = 128 + Math.cos(angle) * dist * 12.8;
+            const y = 128 + Math.sin(angle) * dist * 12.8;
+            if (x > 0 && x < 256 && y > 0 && y < 256) {
+                ctx.fillStyle = `rgba(180, 160, 120, ${0.3 + Math.random() * 0.5})`;
+                ctx.fillRect(x, y, 3, 3);
+            }
+        }
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(4, 4);
+
+        const shoreMat = new THREE.MeshStandardMaterial({
+            map: texture,
+            roughness: 0.9,
+            metalness: 0.0,
+        });
+        const shore = new THREE.Mesh(shoreGeom, shoreMat);
+        shore.position.y = -0.05;
+        shore.receiveShadow = true;
+        shore.castShadow = true;
+        scene.add(shore);
+
+        // ----- Камни на берегу -----
+        const rockMat = new THREE.MeshStandardMaterial({
+            color: 0x6a6a6a,
+            roughness: 0.85,
+            metalness: 0.05,
+        });
+        for (let i = 0; i < 40; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = POND_RADIUS + 0.6 + Math.random() * 2.0;
+            const x = Math.cos(angle) * dist;
+            const z = Math.sin(angle) * dist;
+            const size = 0.15 + Math.random() * 0.4;
+            const rock = new THREE.Mesh(new THREE.SphereGeometry(size, 6, 6), rockMat);
+            rock.position.set(x, -0.1 + size * 0.3, z);
+            rock.scale.y = 0.5 + Math.random() * 0.4;
+            rock.scale.x = 0.7 + Math.random() * 0.6;
+            rock.scale.z = 0.7 + Math.random() * 0.6;
+            rock.rotation.set(Math.random() * 0.5, Math.random() * 2, Math.random() * 0.5);
+            rock.castShadow = true;
+            rock.receiveShadow = true;
+            scene.add(rock);
+        }
+
+        // ----- Кувшинки (лилии) -----
+        const lilyGroup = new THREE.Group();
+        const lilyMat = new THREE.MeshStandardMaterial({
+            color: 0x3a8a3a,
+            roughness: 0.7,
+            metalness: 0.0,
+            side: THREE.DoubleSide,
+        });
+        const flowerMat = new THREE.MeshStandardMaterial({
+            color: 0xff8a9a,
+            roughness: 0.6,
+            metalness: 0.0,
+        });
+        const flowerMat2 = new THREE.MeshStandardMaterial({
+            color: 0xffd93a,
+            roughness: 0.5,
+            metalness: 0.0,
+        });
+
+        // Сохраним позиции кувшинок для лягушек
+        const lilyPositions = [];
+
+        for (let i = 0; i < 14; i++) {
+            const group = new THREE.Group();
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 1.5 + Math.random() * (POND_RADIUS - 2.0);
+            const x = Math.cos(angle) * dist;
+            const z = Math.sin(angle) * dist;
+            lilyPositions.push({ x, z });
+
+            const leaf = new THREE.Mesh(
+                new THREE.CircleGeometry(0.25 + Math.random() * 0.15, 8),
+                lilyMat
+            );
+            leaf.rotation.x = -Math.PI / 2;
+            leaf.position.y = 0.02;
+            leaf.scale.x = 1.2 + Math.random() * 0.6;
+            leaf.scale.y = 0.8 + Math.random() * 0.4;
+            group.add(leaf);
+
+            if (Math.random() > 0.4) {
+                const flower = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.06 + Math.random() * 0.04, 6, 6),
+                    flowerMat
+                );
+                flower.position.set(0, 0.08, 0);
+                group.add(flower);
+                for (let j = 0; j < 3; j++) {
+                    const stamen = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.02, 4, 4),
+                        flowerMat2
+                    );
+                    const a = (j / 3) * Math.PI * 2 + Math.random() * 0.5;
+                    stamen.position.set(Math.cos(a) * 0.05, 0.1, Math.sin(a) * 0.05);
+                    group.add(stamen);
+                }
+            }
+
+            group.position.set(x, 0, z);
+            group.rotation.y = Math.random() * Math.PI * 2;
+            lilyGroup.add(group);
+        }
+        scene.add(lilyGroup);
+
+        // ----- Камыши -----
+        const reedMat = new THREE.MeshStandardMaterial({
+            color: 0x2d6a2d,
+            roughness: 0.8,
+        });
+        const reedTopMat = new THREE.MeshStandardMaterial({
+            color: 0x4a3a1a,
+            roughness: 0.9,
+        });
+
+        for (let i = 0; i < 80; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = POND_RADIUS - 0.2 + Math.random() * 1.2;
+            const x = Math.cos(angle) * dist;
+            const z = Math.sin(angle) * dist;
+
+            const height = 0.4 + Math.random() * 0.8;
+            const reed = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.015, 0.025, height, 4),
+                reedMat
+            );
+            reed.position.set(x, height / 2 - 0.05, z);
+            reed.rotation.z = (Math.random() - 0.5) * 0.2;
+            reed.rotation.x = (Math.random() - 0.5) * 0.2;
+            reed.castShadow = true;
+            scene.add(reed);
+
+            if (Math.random() > 0.5) {
+                const top = new THREE.Mesh(
+                    new THREE.ConeGeometry(0.03, 0.08, 4),
+                    reedTopMat
+                );
+                top.position.set(x, height - 0.02, z);
+                top.rotation.z = reed.rotation.z;
+                top.rotation.x = reed.rotation.x;
+                scene.add(top);
+            }
+        }
+
+        // ============================================================
+        // 1. КЛАСС РЫБКА (оставляем как есть, но добавим метод hide/show)
+        // ============================================================
+        class Fish {
+            constructor(scene, color, bounds) {
+                this.bounds = bounds;
+                this.group = new THREE.Group();
+                this.visible = true;
+
+                const bodyGeom = new THREE.SphereGeometry(0.5, 14, 14);
+                const bodyMat = new THREE.MeshPhongMaterial({
+                    color: color,
+                    emissive: new THREE.Color(color).multiplyScalar(0.12),
+                    shininess: 50,
+                    specular: new THREE.Color(0x666666),
+                });
+                this.body = new THREE.Mesh(bodyGeom, bodyMat);
+                this.body.scale.set(0.44, 0.34, 0.60);
+                this.body.castShadow = true;
+                this.group.add(this.body);
+
+                const tailGroup = new THREE.Group();
+                const tailMat = new THREE.MeshPhongMaterial({
+                    color: color,
+                    emissive: new THREE.Color(color).multiplyScalar(0.10),
+                    side: THREE.DoubleSide,
+                    shininess: 30,
+                });
+                const shape1 = new THREE.Shape();
+                shape1.moveTo(0, 0);
+                shape1.lineTo(-0.32, 0.22);
+                shape1.lineTo(-0.32, 0.02);
+                shape1.closePath();
+                const geom1 = new THREE.ShapeGeometry(shape1);
+                const mesh1 = new THREE.Mesh(geom1, tailMat);
+                mesh1.position.set(0, 0.02, 0);
+                tailGroup.add(mesh1);
+
+                const shape2 = new THREE.Shape();
+                shape2.moveTo(0, 0);
+                shape2.lineTo(-0.32, -0.22);
+                shape2.lineTo(-0.32, -0.02);
+                shape2.closePath();
+                const geom2 = new THREE.ShapeGeometry(shape2);
+                const mesh2 = new THREE.Mesh(geom2, tailMat);
+                mesh2.position.set(0, -0.02, 0);
+                tailGroup.add(mesh2);
+
+                tailGroup.position.set(0, 0, -0.78);
+                this.tail = tailGroup;
+                this.group.add(tailGroup);
+
+                const eyeMat = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 80 });
+                const pupilMat = new THREE.MeshPhongMaterial({ color: 0x111111, shininess: 10 });
+                const eyeGeom = new THREE.SphereGeometry(0.055, 8, 8);
+                const pupilGeom = new THREE.SphereGeometry(0.028, 8, 8);
+
+                this.eyeL = new THREE.Mesh(eyeGeom, eyeMat);
+                this.eyeL.position.set(0.16, 0.12, 0.40);
+                this.group.add(this.eyeL);
+                this.pupilL = new THREE.Mesh(pupilGeom, pupilMat);
+                this.pupilL.position.set(0.19, 0.12, 0.43);
+                this.group.add(this.pupilL);
+
+                this.eyeR = new THREE.Mesh(eyeGeom, eyeMat);
+                this.eyeR.position.set(-0.16, 0.12, 0.40);
+                this.group.add(this.eyeR);
+                this.pupilR = new THREE.Mesh(pupilGeom, pupilMat);
+                this.pupilR.position.set(-0.19, 0.12, 0.43);
+                this.group.add(this.pupilR);
+
+                const finMat = new THREE.MeshPhongMaterial({
+                    color: color,
+                    emissive: new THREE.Color(color).multiplyScalar(0.08),
+                    transparent: true,
+                    opacity: 0.7,
+                });
+                const finGeom = new THREE.ConeGeometry(0.07, 0.22, 4);
+                this.fin = new THREE.Mesh(finGeom, finMat);
+                this.fin.position.set(0, 0.30, -0.05);
+                this.fin.rotation.x = 0.15;
+                this.group.add(this.fin);
+
+                const pfinMat = new THREE.MeshPhongMaterial({
+                    color: color,
+                    emissive: new THREE.Color(color).multiplyScalar(0.06),
+                    transparent: true,
+                    opacity: 0.6,
+                });
+                const pfinGeom = new THREE.ConeGeometry(0.04, 0.14, 4);
+                const pf1 = new THREE.Mesh(pfinGeom, pfinMat);
+                pf1.position.set(0.20, -0.08, 0.22);
+                pf1.rotation.z = -0.4;
+                pf1.rotation.x = 0.3;
+                this.group.add(pf1);
+                const pf2 = new THREE.Mesh(pfinGeom, pfinMat);
+                pf2.position.set(-0.20, -0.08, 0.22);
+                pf2.rotation.z = 0.4;
+                pf2.rotation.x = 0.3;
+                this.group.add(pf2);
+
+                scene.add(this.group);
+
+                const half = POND_RADIUS - 0.6;
+                this.target = new THREE.Vector3(
+                    (Math.random() - 0.5) * half * 2,
+                    0,
+                    (Math.random() - 0.5) * half * 2
+                );
+                this.speed = 0.012 + Math.random() * 0.022;
+                this.tailPhase = Math.random() * 100;
+                this.tailSpeed = 0.12 + Math.random() * 0.10;
+                this.yPhase = Math.random() * 100;
+                this.ySpeed = 0.015 + Math.random() * 0.01;
+
+                this.group.position.set(
+                    (Math.random() - 0.5) * half * 2,
+                    0,
+                    (Math.random() - 0.5) * half * 2
+                );
+                this.group.rotation.y = Math.random() * Math.PI * 2;
+                this.currentAngle = this.group.rotation.y;
+                this.targetAngle = this.currentAngle;
+            }
+
+            setTarget(x, z) {
+                const half = POND_RADIUS - 0.6;
+                this.target.set(
+                    Math.max(-half, Math.min(half, x)),
+                    0,
+                    Math.max(-half, Math.min(half, z))
+                );
+            }
+
+            setVisible(vis) {
+                this.visible = vis;
+                this.group.visible = vis;
+            }
+
+            update(time) {
+                if (!this.visible) return;
+                const dx = this.target.x - this.group.position.x;
+                const dz = this.target.z - this.group.position.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+
+                if (dist < 0.3) {
+                    const half = POND_RADIUS - 0.6;
+                    this.target.set(
+                        (Math.random() - 0.5) * half * 2,
+                        0,
+                        (Math.random() - 0.5) * half * 2
+                    );
+                    this.speed = 0.012 + Math.random() * 0.022;
+                    this.tailSpeed = 0.12 + Math.random() * 0.10;
+                }
+
+                if (dist > 0.05) {
+                    this.targetAngle = Math.atan2(dx, dz);
+                    let diff = this.targetAngle - this.currentAngle;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    this.currentAngle += diff * 0.045;
+                    this.group.rotation.y = this.currentAngle;
+
+                    const moveX = Math.sin(this.currentAngle) * this.speed;
+                    const moveZ = Math.cos(this.currentAngle) * this.speed;
+                    this.group.position.x += moveX;
+                    this.group.position.z += moveZ;
+                }
+
+                const half = POND_RADIUS - 0.5;
+                this.group.position.x = Math.max(-half, Math.min(half, this.group.position.x));
+                this.group.position.z = Math.max(-half, Math.min(half, this.group.position.z));
+
+                this.yPhase += this.ySpeed;
+                this.group.position.y = Math.sin(this.yPhase) * 0.06;
+
+                this.tailPhase += this.tailSpeed;
+                const tailSway = Math.sin(this.tailPhase) * 0.45;
+                this.tail.rotation.z = tailSway;
+
+                this.body.rotation.z = -Math.sin(this.currentAngle - this.targetAngle) * 0.08;
+                this.body.rotation.x = Math.sin(this.yPhase * 0.7) * 0.02;
+            }
+        }
+
+        // ============================================================
+        // 2. КЛАСС УТКА
+        // ============================================================
+        class Duck {
+            constructor(scene, startPos) {
+                this.group = new THREE.Group();
+
+                // Тело
+                const bodyMat = new THREE.MeshPhongMaterial({ color: 0xf5e6c8, roughness: 0.7 });
+                const bodyGeom = new THREE.SphereGeometry(0.35, 12, 12);
+                this.body = new THREE.Mesh(bodyGeom, bodyMat);
+                this.body.scale.set(0.9, 0.65, 1.2);
+                this.body.position.y = 0.05;
+                this.body.castShadow = true;
+                this.group.add(this.body);
+
+                // Голова
+                const headMat = new THREE.MeshPhongMaterial({ color: 0x2d5a27, roughness: 0.6 });
+                const headGeom = new THREE.SphereGeometry(0.18, 10, 10);
+                this.head = new THREE.Mesh(headGeom, headMat);
+                this.head.position.set(0, 0.20, 0.35);
+                this.head.castShadow = true;
+                this.group.add(this.head);
+
+                // Клюв
+                const beakMat = new THREE.MeshPhongMaterial({ color: 0xff8c00, roughness: 0.5 });
+                const beakGeom = new THREE.ConeGeometry(0.06, 0.12, 6);
+                this.beak = new THREE.Mesh(beakGeom, beakMat);
+                this.beak.position.set(0, 0.14, 0.46);
+                this.beak.rotation.x = 0.3;
+                this.group.add(this.beak);
+
+                // Крылья (два треугольника)
+                const wingMat = new THREE.MeshPhongMaterial({ color: 0x8b6b4d, side: THREE.DoubleSide, roughness: 0.8 });
+                const wingShape = new THREE.Shape();
+                wingShape.moveTo(0, 0);
+                wingShape.lineTo(0.25, 0.1);
+                wingShape.lineTo(0.0, 0.25);
+                wingShape.closePath();
+                const wingGeom = new THREE.ShapeGeometry(wingShape);
+                this.wingL = new THREE.Mesh(wingGeom, wingMat);
+                this.wingL.position.set(-0.15, 0.02, -0.05);
+                this.wingL.rotation.y = -0.3;
+                this.wingL.rotation.x = 0.2;
+                this.group.add(this.wingL);
+                this.wingR = new THREE.Mesh(wingGeom.clone(), wingMat);
+                this.wingR.position.set(0.15, 0.02, -0.05);
+                this.wingR.rotation.y = 0.3;
+                this.wingR.rotation.x = 0.2;
+                this.wingR.scale.x = -1;
+                this.group.add(this.wingR);
+
+                scene.add(this.group);
+
+                this.group.position.copy(startPos);
+                this.group.position.y = 0.0;
+                // Направление
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = 0.008 + Math.random() * 0.012;
+                this.headBob = Math.random() * 100;
+                this.wingFlap = Math.random() * 100;
+                // Цель для плавания
+                this.targetPos = new THREE.Vector3(
+                    (Math.random() - 0.5) * (POND_RADIUS - 1) * 2,
+                    0,
+                    (Math.random() - 0.5) * (POND_RADIUS - 1) * 2
+                );
+            }
+
+            update(time) {
+                // Движение к цели
+                const dx = this.targetPos.x - this.group.position.x;
+                const dz = this.targetPos.z - this.group.position.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist < 0.5) {
+                    this.targetPos.set(
+                        (Math.random() - 0.5) * (POND_RADIUS - 1) * 2,
+                        0,
+                        (Math.random() - 0.5) * (POND_RADIUS - 1) * 2
+                    );
+                }
+                // Плавный поворот
+                const targetAngle = Math.atan2(dx, dz);
+                let diff = targetAngle - this.angle;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                this.angle += diff * 0.03;
+                this.group.rotation.y = this.angle;
+
+                // Движение
+                this.group.position.x += Math.sin(this.angle) * this.speed;
+                this.group.position.z += Math.cos(this.angle) * this.speed;
+
+                // Ограничение
+                const half = POND_RADIUS - 0.8;
+                this.group.position.x = Math.max(-half, Math.min(half, this.group.position.x));
+                this.group.position.z = Math.max(-half, Math.min(half, this.group.position.z));
+
+                // Покачивание головы
+                this.headBob += 0.03;
+                this.head.rotation.x = Math.sin(this.headBob) * 0.05;
+                this.head.rotation.z = Math.sin(this.headBob * 0.7) * 0.03;
+
+                // Взмахи крыльев
+                this.wingFlap += 0.04;
+                const flap = Math.sin(this.wingFlap) * 0.15 + 0.15;
+                this.wingL.rotation.z = flap;
+                this.wingR.rotation.z = flap;
+
+                // Небольшое покачивание тела
+                this.body.rotation.z = Math.sin(this.headBob * 0.5) * 0.02;
+            }
+        }
+
+        // ============================================================
+        // 3. КЛАСС ЛЯГУШКА
+        // ============================================================
+        class Frog {
+            constructor(scene, position) {
+                this.group = new THREE.Group();
+
+                // Тело
+                const bodyMat = new THREE.MeshPhongMaterial({ color: 0x3a9d23, roughness: 0.6, emissive: 0x1a4d0a,
+                    emissiveIntensity: 0.1 });
+                const bodyGeom = new THREE.SphereGeometry(0.18, 10, 10);
+                this.body = new THREE.Mesh(bodyGeom, bodyMat);
+                this.body.scale.set(0.9, 0.7, 1.1);
+                this.body.position.y = 0.08;
+                this.body.castShadow = true;
+                this.group.add(this.body);
+
+                // Глаза
+                const eyeMat = new THREE.MeshPhongMaterial({ color: 0xffffff });
+                const pupilMat = new THREE.MeshPhongMaterial({ color: 0x000000 });
+                const eyeGeom = new THREE.SphereGeometry(0.06, 8, 8);
+                const pupilGeom = new THREE.SphereGeometry(0.035, 6, 6);
+                const eyeL = new THREE.Mesh(eyeGeom, eyeMat);
+                eyeL.position.set(-0.10, 0.16, 0.14);
+                this.group.add(eyeL);
+                const pupilL = new THREE.Mesh(pupilGeom, pupilMat);
+                pupilL.position.set(-0.10, 0.16, 0.18);
+                this.group.add(pupilL);
+                const eyeR = new THREE.Mesh(eyeGeom, eyeMat);
+                eyeR.position.set(0.10, 0.16, 0.14);
+                this.group.add(eyeR);
+                const pupilR = new THREE.Mesh(pupilGeom, pupilMat);
+                pupilR.position.set(0.10, 0.16, 0.18);
+                this.group.add(pupilR);
+
+                // Ноги (задние)
+                const legMat = new THREE.MeshPhongMaterial({ color: 0x2d7a1a, roughness: 0.7 });
+                const legGeom = new THREE.CylinderGeometry(0.03, 0.04, 0.12, 6);
+                const legL = new THREE.Mesh(legGeom, legMat);
+                legL.position.set(-0.12, 0.02, -0.16);
+                legL.rotation.x = 0.3;
+                legL.rotation.z = 0.2;
+                this.group.add(legL);
+                const legR = new THREE.Mesh(legGeom, legMat);
+                legR.position.set(0.12, 0.02, -0.16);
+                legR.rotation.x = 0.3;
+                legR.rotation.z = -0.2;
+                this.group.add(legR);
+
+                // Передние ноги
+                const legFGeom = new THREE.CylinderGeometry(0.02, 0.03, 0.08, 6);
+                const legFL = new THREE.Mesh(legFGeom, legMat);
+                legFL.position.set(-0.08, 0.02, 0.14);
+                legFL.rotation.x = -0.2;
+                legFL.rotation.z = 0.3;
+                this.group.add(legFL);
+                const legFR = new THREE.Mesh(legFGeom, legMat);
+                legFR.position.set(0.08, 0.02, 0.14);
+                legFR.rotation.x = -0.2;
+                legFR.rotation.z = -0.3;
+                this.group.add(legFR);
+
+                scene.add(this.group);
+                this.group.position.set(position.x, 0.02, position.z);
+                // Случайный поворот
+                this.group.rotation.y = Math.random() * Math.PI * 2;
+
+                // Анимация дыхания
+                this.breathPhase = Math.random() * 100;
+                this.jumpTimer = 0;
+            }
+
+            update(time) {
+                // Пульсация тела
+                this.breathPhase += 0.02;
+                const breath = Math.sin(this.breathPhase) * 0.02 + 1;
+                this.body.scale.x = 0.9 * breath;
+                this.body.scale.z = 1.1 * breath;
+
+                // Иногда прыжок (резкое движение вверх и в сторону)
+                this.jumpTimer += 0.005;
+                if (this.jumpTimer > 1) {
+                    this.jumpTimer = 0;
+                    if (Math.random() < 0.3) {
+                        // Прыжок: подпрыгнуть и сместиться
+                        const jumpHeight = 0.15 + Math.random() * 0.1;
+                        const jumpAngle = Math.random() * Math.PI * 2;
+                        const jumpDist = 0.1 + Math.random() * 0.15;
+                        // Анимируем через простой tween: установим цель и будем интерполировать
+                        // Для простоты просто мгновенно переместим с эффектом (можно было бы сделать плавно, но оставим так)
+                        // Лучше сделать плавно через изменение позиции в update
+                        // Запомним цель прыжка
+                        if (!this.jumpTarget) {
+                            this.jumpTarget = new THREE.Vector3(
+                                this.group.position.x + Math.cos(jumpAngle) * jumpDist,
+                                0.2,
+                                this.group.position.z + Math.sin(jumpAngle) * jumpDist
+                            );
+                            this.jumpProgress = 0;
+                        }
+                    }
+                }
+
+                if (this.jumpTarget) {
+                    this.jumpProgress += 0.04;
+                    if (this.jumpProgress >= 1) {
+                        this.group.position.copy(this.jumpTarget);
+                        this.group.position.y = 0.02;
+                        this.jumpTarget = null;
+                        this.jumpProgress = 0;
+                    } else {
+                        // Интерполяция
+                        const t = this.jumpProgress;
+                        const startX = this.group.position.x;
+                        const startZ = this.group.position.z;
+                        this.group.position.x = startX + (this.jumpTarget.x - startX) * t;
+                        this.group.position.z = startZ + (this.jumpTarget.z - startZ) * t;
+                        this.group.position.y = 0.02 + Math.sin(t * Math.PI) * 0.15;
+                    }
+                }
+            }
+        }
+
+        // ============================================================
+        // 4. УДОЧКА
+        // ============================================================
+        class FishingRod {
+            constructor(scene) {
+                this.group = new THREE.Group();
+
+                // Удилище (палка)
+                const rodMat = new THREE.MeshPhongMaterial({ color: 0x8b5a2b, roughness: 0.8 });
+                const rodGeom = new THREE.CylinderGeometry(0.04, 0.06, 1.4, 6);
+                this.rod = new THREE.Mesh(rodGeom, rodMat);
+                this.rod.position.y = 0.7;
+                this.rod.rotation.x = 0.3;
+                this.rod.castShadow = true;
+                this.group.add(this.rod);
+
+                // Катушка
+                const reelMat = new THREE.MeshPhongMaterial({ color: 0xcccccc, metalness: 0.6, roughness: 0.3 });
+                const reelGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 8);
+                const reel = new THREE.Mesh(reelGeom, reelMat);
+                reel.position.set(0, 0.4, 0.1);
+                reel.rotation.x = Math.PI / 2;
+                this.group.add(reel);
+
+                // Леска (линия)
+                const lineMat = new THREE.LineBasicMaterial({ color: 0xaaaaaa, transparent: true, opacity: 0.8 });
+                const points = [];
+                points.push(new THREE.Vector3(0, 0.45, 0.15));
+                points.push(new THREE.Vector3(0, 0.0, 0.3));
+                points.push(new THREE.Vector3(0, -0.1, 0.5));
+                const lineGeom = new THREE.BufferGeometry().setFromPoints(points);
+                this.line = new THREE.Line(lineGeom, lineMat);
+                this.group.add(this.line);
+
+                // Крючок (маленький крючок - просто изогнутая линия)
+                const hookMat = new THREE.LineBasicMaterial({ color: 0x888888 });
+                const hookPoints = [];
+                hookPoints.push(new THREE.Vector3(0, -0.1, 0.5));
+                hookPoints.push(new THREE.Vector3(0.02, -0.15, 0.55));
+                hookPoints.push(new THREE.Vector3(-0.02, -0.18, 0.58));
+                hookPoints.push(new THREE.Vector3(0.0, -0.15, 0.55));
+                const hookGeom = new THREE.BufferGeometry().setFromPoints(hookPoints);
+                this.hook = new THREE.Line(hookGeom, hookMat);
+                this.group.add(this.hook);
+
+                // Поплавок (красный шарик)
+                const floatMat = new THREE.MeshPhongMaterial({ color: 0xff3333, emissive: 0x881111, emissiveIntensity: 0.2 });
+                const floatGeom = new THREE.SphereGeometry(0.05, 8, 8);
+                this.float = new THREE.Mesh(floatGeom, floatMat);
+                this.float.position.set(0, 0.0, 0.3);
+                this.group.add(this.float);
+
+                // Расположение на берегу
+                const angle = -0.8; // примерно слева
+                const dist = POND_RADIUS + 0.8;
+                this.group.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+                this.group.rotation.y = angle + Math.PI / 2.5;
+
+                scene.add(this.group);
+
+                // Состояние рыбалки
+                this.isCasting = false;
+                this.castProgress = 0;
+                this.caughtFish = null;
+                this.fishRespawnTimer = 0;
+            }
+
+            // Начать рыбалку (заброс)
+            cast() {
+                if (this.isCasting) return false;
+                this.isCasting = true;
+                this.castProgress = 0;
+                // Анимация заброса: удилище наклоняется, леска вылетает
+                return true;
+            }
+
+            update(time, fishes) {
+                if (this.isCasting) {
+                    this.castProgress += 0.02;
+                    // Анимация: удилище наклоняется вперёд, леска удлиняется
+                    const t = Math.min(this.castProgress, 1);
+                    // Наклон удилища
+                    this.rod.rotation.x = 0.3 + t * 0.6;
+                    // Леска и крючок смещаются вперёд и вниз
+                    const linePoints = this.line.geometry.attributes.position.array;
+                    // Обновим точки лески
+                    const baseY = 0.45;
+                    const endY = -0.2 - t * 0.3;
+                    const endZ = 0.15 + t * 0.8;
+                    linePoints[0] = 0;
+                    linePoints[1] = baseY;
+                    linePoints[2] = 0.15;
+                    linePoints[3] = 0;
+                    linePoints[4] = baseY - 0.4 * t;
+                    linePoints[5] = 0.15 + 0.3 * t;
+                    linePoints[6] = 0;
+                    linePoints[7] = endY;
+                    linePoints[8] = endZ;
+                    this.line.geometry.attributes.position.needsUpdate = true;
+
+                    // Поплавок
+                    this.float.position.set(0, endY + 0.05, endZ);
+                    // Крючок
+                    const hookPos = this.hook.geometry.attributes.position.array;
+                    hookPos[0] = 0;
+                    hookPos[1] = endY;
+                    hookPos[2] = endZ;
+                    hookPos[3] = 0.02;
+                    hookPos[4] = endY - 0.05;
+                    hookPos[5] = endZ + 0.05;
+                    hookPos[6] = -0.02;
+                    hookPos[7] = endY - 0.08;
+                    hookPos[8] = endZ + 0.08;
+                    hookPos[9] = 0;
+                    hookPos[10] = endY - 0.05;
+                    hookPos[11] = endZ + 0.05;
+                    this.hook.geometry.attributes.position.needsUpdate = true;
+
+                    if (t >= 1) {
+                        this.isCasting = false;
+                        // Проверяем, есть ли рыбка в зоне крючка (имитация поклёвки)
+                        // Найдём ближайшую рыбку к крючку (в радиусе 0.8)
+                        const hookWorld = new THREE.Vector3(0, endY, endZ);
+                        this.group.localToWorld(hookWorld);
+                        let minDist = 2.0;
+                        let targetFish = null;
+                        for (const fish of fishes) {
+                            if (!fish.visible) continue;
+                            const fishPos = fish.group.position;
+                            const d = fishPos.distanceTo(hookWorld);
+                            if (d < minDist) {
+                                minDist = d;
+                                targetFish = fish;
+                            }
+                        }
+                        if (targetFish && minDist < 0.9) {
+                            // Поймали!
+                            this.caughtFish = targetFish;
+                            targetFish.setVisible(false);
+                            this.fishRespawnTimer = 8.0; // через 8 секунд вернётся
+                            // Анимация подёргивания удочки
+                            this.rod.rotation.x = 0.9;
+                            setTimeout(() => {
+                                this.rod.rotation.x = 0.3;
+                            }, 300);
+                            return true;
+                        }
+                    }
+                }
+
+                // Возврат лески, если рыбка поймана и таймер истёк
+                if (this.caughtFish) {
+                    this.fishRespawnTimer -= 0.016;
+                    if (this.fishRespawnTimer <= 0) {
+                        this.caughtFish.setVisible(true);
+                        this.caughtFish = null;
+                        // Сброс лески в исходное положение
+                        const linePoints = this.line.geometry.attributes.position.array;
+                        linePoints[0] = 0;
+                        linePoints[1] = 0.45;
+                        linePoints[2] = 0.15;
+                        linePoints[3] = 0;
+                        linePoints[4] = 0.0;
+                        linePoints[5] = 0.3;
+                        linePoints[6] = 0;
+                        linePoints[7] = -0.1;
+                        linePoints[8] = 0.5;
+                        this.line.geometry.attributes.position.needsUpdate = true;
+                        this.float.position.set(0, 0.0, 0.3);
+                        const hookPos = this.hook.geometry.attributes.position.array;
+                        hookPos[0] = 0;
+                        hookPos[1] = -0.1;
+                        hookPos[2] = 0.5;
+                        hookPos[3] = 0.02;
+                        hookPos[4] = -0.15;
+                        hookPos[5] = 0.55;
+                        hookPos[6] = -0.02;
+                        hookPos[7] = -0.18;
+                        hookPos[8] = 0.58;
+                        hookPos[9] = 0;
+                        hookPos[10] = -0.15;
+                        hookPos[11] = 0.55;
+                        this.hook.geometry.attributes.position.needsUpdate = true;
+                        this.rod.rotation.x = 0.3;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        // ============================================================
+        // 5. СОЗДАНИЕ ОБЪЕКТОВ
+        // ============================================================
+        const fishes = [];
+        const half = POND_RADIUS - 0.6;
+        const bounds = { minX: -half, maxX: half, minZ: -half, maxZ: half };
+
+        const shuffledColors = [...COLORS].sort(() => Math.random() - 0.5);
+        for (let i = 0; i < FISH_COUNT; i++) {
+            const color = shuffledColors[i % shuffledColors.length];
+            const fish = new Fish(scene, color, bounds);
+            fishes.push(fish);
+        }
+        document.getElementById('fishCount').textContent = fishes.length;
+
+        // ----- Утки -----
+        const ducks = [];
+        for (let i = 0; i < 4; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 2 + Math.random() * (POND_RADIUS - 2.5);
+            const pos = new THREE.Vector3(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+            const duck = new Duck(scene, pos);
+            ducks.push(duck);
+        }
+        document.getElementById('duckCount').textContent = ducks.length;
+
+        // ----- Лягушки (сидят на кувшинках) -----
+        const frogs = [];
+        // Выберем несколько кувшинок
+        const frogPositions = [];
+        for (let i = 0; i < Math.min(4, lilyPositions.length); i++) {
+            const idx = Math.floor(Math.random() * lilyPositions.length);
+            const pos = lilyPositions[idx];
+            // Проверим, чтобы не было слишком близко к другим лягушкам
+            let tooClose = false;
+            for (const f of frogPositions) {
+                if (Math.sqrt((f.x - pos.x) ** 2 + (f.z - pos.z) ** 2) < 1.0) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (!tooClose) {
+                frogPositions.push(pos);
+                const frog = new Frog(scene, pos);
+                frogs.push(frog);
+            }
+        }
+
+        // ----- Удочка -----
+        const fishingRod = new FishingRod(scene);
+
+        // ----- Рябь (оставляем как было) -----
+        const rippleGroup = new THREE.Group();
+        scene.add(rippleGroup);
+        const ripples = [];
+
+        function createRipple(x, z) {
+            const ringGeom = new THREE.RingGeometry(0.02, 0.08, 24);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: 0x8ad4ff,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide,
+                depthWrite: false,
+            });
+            const ring = new THREE.Mesh(ringGeom, ringMat);
+            ring.position.set(x, 0.02, z);
+            ring.rotation.x = -Math.PI / 2;
+            ring.scale.set(1, 1, 1);
+            rippleGroup.add(ring);
+
+            const data = {
+                mesh: ring,
+                life: 1.0,
+                speed: 0.008 + Math.random() * 0.004,
+                maxScale: 2.0 + Math.random() * 1.5,
+            };
+            ripples.push(data);
+        }
+
+        // ----- Обработка клика (удочка + рыбки) -----
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+
+        renderer.domElement.addEventListener('click', (event) => {
+            pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+            pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(pointer, camera);
+            const intersects = raycaster.intersectObject(water);
+
+            if (intersects.length > 0) {
+                const point = intersects[0].point;
+                const dist = Math.sqrt(point.x * point.x + point.z * point.z);
+                if (dist < POND_RADIUS - 0.3) {
+                    // Все рыбки плывут к точке (если видимы)
+                    for (const fish of fishes) {
+                        if (fish.visible) fish.setTarget(point.x, point.z);
+                    }
+                    // Рябь
+                    createRipple(point.x, point.z);
+                    for (let i = 0; i < 3; i++) {
+                        setTimeout(() => {
+                            const angle = Math.random() * Math.PI * 2;
+                            const r = 0.2 + Math.random() * 0.4;
+                            createRipple(
+                                point.x + Math.cos(angle) * r,
+                                point.z + Math.sin(angle) * r
+                            );
+                        }, i * 60);
+                    }
+
+                    // Закинуть удочку
+                    const caught = fishingRod.cast();
+                    if (caught) {
+                        // если поклёвка произошла, то уже обработано в update
+                    }
+                }
+            }
+        });
+
+        // ----- Анимация ряби -----
+        function updateRipples() {
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                const r = ripples[i];
+                r.life -= 0.012;
+                if (r.life <= 0) {
+                    rippleGroup.remove(r.mesh);
+                    r.mesh.geometry.dispose();
+                    r.mesh.material.dispose();
+                    ripples.splice(i, 1);
+                    continue;
+                }
+                const scale = 1 + (1 - r.life) * r.maxScale;
+                r.mesh.scale.set(scale, scale, scale);
+                r.mesh.material.opacity = r.life * 0.7;
+                r.mesh.position.y = 0.02 + (1 - r.life) * 0.02;
+            }
+        }
+
+        // ----- Часы -----
+        const clock = new THREE.Clock();
+
+        // ----- Основной цикл -----
+        function animate() {
+            const time = clock.getElapsedTime();
+
+            // Анимация воды
+            const array = waterPos.array;
+            const freq1 = 0.35;
+            const freq2 = 0.50;
+            const amp1 = 0.07;
+            const amp2 = 0.05;
+            for (let i = 0; i < array.length; i += 3) {
+                const x = array[i];
+                const z = array[i + 2];
+                const wave1 = Math.sin(x * freq1 + time * 0.8) * amp1 +
+                    Math.cos(z * freq2 + time * 0.6) * amp2;
+                const wave2 = Math.sin((x + z) * 0.25 + time * 0.5) * 0.03;
+                array[i + 1] = waterBaseY[i + 1] + wave1 + wave2;
+            }
+            waterPos.needsUpdate = true;
+            waterGeom.computeVertexNormals();
+
+            // Рыбки
+            for (const fish of fishes) {
+                fish.update(time);
+            }
+
+            // Утки
+            for (const duck of ducks) {
+                duck.update(time);
+            }
+
+            // Лягушки
+            for (const frog of frogs) {
+                frog.update(time);
+            }
+
+            // Удочка
+            fishingRod.update(time, fishes);
+
+            // Рябь
+            updateRipples();
+
+            controls.update();
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // ----- Адаптация под размер окна -----
+        window.addEventListener('resize', () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        });
+
+        // ----- Исчезновение подсказки -----
+        setTimeout(() => {
+            const info = document.getElementById('info');
+            if (info) info.style.opacity = '0';
+        }, 10000);
+
+        console.log('🐟 Пруд с рыбками, лягушками, утками и удочкой загружен!');
+    </script>
+</body>
+</html>
